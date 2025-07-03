@@ -3,56 +3,52 @@ name: Build Tailscale for Windows
 
 # Controls when the workflow will run.
 on:
-  # Allows you to run this workflow manually from the Actions tab.
   workflow_dispatch:
-  # Triggers the workflow on push events but only for the "main" branch.
   push:
     branches: [ "main" ]
 
 jobs:
-  # Defines a single job in this workflow called "build-windows".
   build-windows:
-    # A friendly name for the job displayed in the UI.
     name: Build Tailscale (Windows)
-    
-    # The type of runner that the job will run on.
     runs-on: windows-latest
+    
+    # This is the critical fix.
+    # This environment variable tells all subsequent MSYS2 steps to operate
+    # within the MINGW64 subsystem, which matches the toolchain we installed.
+    # It ensures correct path handling for native Windows tools like Go.
+    env:
+      MSYSTEM: MINGW64
 
     steps:
-      # Step 1: Check out the official Tailscale repository source code.
+      # Step 1: Checkout Tailscale source code
       - name: Checkout Tailscale source code
         uses: actions/checkout@v4
         with:
           repository: tailscale/tailscale
-          # Fetches all history for all branches and tags, needed for build_dist.sh to get version info.
           fetch-depth: 0
 
-      # Step 2: Set up MSYS2 and install dependencies INSIDE the MSYS2 environment.
-      # This is the key change. We use MSYS2's package manager 'pacman' to install Go.
-      # This ensures 'go' is in the MSYS2 shell's PATH by default.
+      # Step 2: Set up MSYS2 and install Go and other dependencies
       - name: Set up MSYS2 and install Go
         uses: msys2/setup-msys2@v2
         with:
-          # Updates the package database and base packages.
           update: true
-          # Install the MinGW-w64 version of Go, Git (for version info), and make (good practice).
           install: >-
             mingw-w64-x86_64-go
             git
             make
 
-      # Step 3: Build tailscaled.exe using the official distribution script.
-      # This command now works because 'go' is in the PATH of the msys2 shell.
+      # Step 3: Build tailscaled.exe
+      # This step will now run in a MINGW64 shell due to the 'env' setting above.
       - name: Build tailscaled.exe
         shell: msys2 {0}
         run: ./build_dist.sh tailscale.com/cmd/tailscaled
 
-      # Step 4: Build tailscale.exe, the client GUI/CLI.
+      # Step 4: Build tailscale.exe
       - name: Build tailscale.exe
         shell: msys2 {0}
         run: ./build_dist.sh tailscale.com/cmd/tailscale
 
-      # Step 5: Upload the compiled binaries as a downloadable artifact.
+      # Step 5: Upload the compiled binaries
       - name: Upload Windows binaries
         uses: actions/upload-artifact@v4
         with:
