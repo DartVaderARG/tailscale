@@ -16,12 +16,10 @@ jobs:
     name: Build Tailscale (Windows)
     
     # The type of runner that the job will run on.
-    # We must use Windows to build Windows executables.
     runs-on: windows-latest
 
     steps:
       # Step 1: Check out the official Tailscale repository source code.
-      # This downloads the code into the runner environment.
       - name: Checkout Tailscale source code
         uses: actions/checkout@v4
         with:
@@ -29,48 +27,37 @@ jobs:
           # Fetches all history for all branches and tags, needed for build_dist.sh to get version info.
           fetch-depth: 0
 
-      # Step 2: Set up the Go programming environment.
-      # As per Tailscale's docs, this should be the latest Go release.
-      # We specify a version range to get the latest patch release automatically.
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '^1.23.0' # Uses the latest 1.23.x release. Update this as Tailscale requires newer Go versions.
-          check-latest: true
-
-      # Step 3: Set up MSYS2 to provide a Unix-like environment on Windows.
-      # This is necessary to run the bash script 'build_dist.sh'.
-      - name: Set up MSYS2
+      # Step 2: Set up MSYS2 and install dependencies INSIDE the MSYS2 environment.
+      # This is the key change. We use MSYS2's package manager 'pacman' to install Go.
+      # This ensures 'go' is in the MSYS2 shell's PATH by default.
+      - name: Set up MSYS2 and install Go
         uses: msys2/setup-msys2@v2
         with:
-          # Updates the package database and base packages
+          # Updates the package database and base packages.
           update: true
-          # Installs 'make', which is a common dependency for build scripts.
-          install: make
+          # Install the MinGW-w64 version of Go, Git (for version info), and make (good practice).
+          install: >-
+            mingw-w64-x86_64-go
+            git
+            make
 
-      # Step 4: Build tailscaled.exe using the official distribution script.
-      # This correctly burns version information into the binary.
+      # Step 3: Build tailscaled.exe using the official distribution script.
+      # This command now works because 'go' is in the PATH of the msys2 shell.
       - name: Build tailscaled.exe
-        # We must use the 'bash' shell provided by MSYS2 to run the script.
         shell: msys2 {0}
         run: ./build_dist.sh tailscale.com/cmd/tailscaled
 
-      # Step 5: Build tailscale.exe, the client GUI/CLI.
+      # Step 4: Build tailscale.exe, the client GUI/CLI.
       - name: Build tailscale.exe
         shell: msys2 {0}
         run: ./build_dist.sh tailscale.com/cmd/tailscale
 
-      # Step 6: Upload the compiled binaries as a downloadable artifact.
-      # The resulting .zip file will be available on the workflow run's summary page.
+      # Step 5: Upload the compiled binaries as a downloadable artifact.
       - name: Upload Windows binaries
         uses: actions/upload-artifact@v4
         with:
-          # The name of the artifact to be uploaded.
           name: tailscale-windows-binaries
-          # The path to the files to be included in the artifact.
-          # The build script places the executables in the root directory.
           path: |
             tailscaled.exe
             tailscale.exe
-          # Optional: How long to keep the artifact.
           retention-days: 7
